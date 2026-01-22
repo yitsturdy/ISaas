@@ -2,16 +2,16 @@
 - インサイドセールスを強化するSaas
 - インサイドセールスの業務を支援するSaas
 
-#アプリURL
+# アプリURL
 
-#コンセプト
+# コンセプト
 
-#執筆記事
+# 執筆記事
 Qiitaなど
 
-#機能一覧
+# 機能一覧
 
-#使用技術
+# 使用技術
 |Category|Technology|
 | :-- | :-- |
 |Frontend|	Next.js, TypeScript, Tailwind CSS |
@@ -23,8 +23,8 @@ Qiitaなど
 |DevOps|Datadog|
 |Design|Figma|
 
-#ER 図
+# ER 図
 
-#インフラ構成図
+# インフラ構成図
 
-#今後の展望
+# 今後の展望
