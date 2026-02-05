@@ -1,33 +1,46 @@
 services:
-  services:
   # Next.js
-  frontend:
-    build: ./frontend
-    ports: ["3000:3000"]
-    volumes: ["./frontend:/app"]
-
+  front:
+    build: ./docker/front
+    volumes:
+      - ./app:/app
+    environment: 
+      - WATCHPACK_POLLING=true  #ホットリロード機能
+    command: sh -c "npm run dev"
+    ports:
+      - "3000:3000"
   # Laravel
-  backend-laravel:
-    build: ./backend-laravel
-    ports: ["8000:8000"]
-    volumes: ["./backend-laravel:/var/www/html"]
-    environment:
-      DB_HOST: db
+  php:
+    build: ./docker/php
+    volumes:
+      - ./backend:/var/www/
 
   # Go
-  backend-go:
-    build: ./backend-go
-    ports: ["8080:8080"]
-    volumes: ["./backend-go:/app"]
+#  go:
+#    build: ./backend-go
+#    ports: ["8080:8080"]
+#    volumes: ["./backend-go:/app"]
 
   # Database
   db:
-    image: postgres:13
+    image: postgres:latest
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: mydatabase
+      POSTGRES_DB: saas_db
+      POSTGRES_USER: saas_user
+      POSTGRES_PASSWORD: saas_password
+      
+    volumes:
+      - db-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./backend:/var/www/
+      
+volumes:
+    db-data:
