@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\LeadStageController;
 use App\Http\Controllers\Api\UserController;
@@ -31,4 +32,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // リードステージ管理
     Route::apiResource('lead-stages', LeadStageController::class);
+
+    // ダッシュボード
+    Route::get('dashboard',                  [DashboardController::class, 'index']);
+    Route::get('dashboard/performance',      [DashboardController::class, 'performance']);
+    Route::get('dashboard/neglected-leads',  [DashboardController::class, 'neglectedLeads']);
 });

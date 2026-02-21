@@ -242,3 +242,47 @@ export const leadsApi = {
   assign: (token: string, id: number, owner_id: number | null) =>
     request<Lead>(`/leads/${id}/assign`, { method: 'PATCH', body: { owner_id }, token }),
 };
+
+// ---- ダッシュボード 型定義 ----
+export type LeadsByStage = {
+  stage_id: number;
+  stage_name: string;
+  count: number;
+};
+
+export type DashboardStats = {
+  total_leads: number;
+  active_leads: number;
+  won_leads: number;
+  conversion_rate: number;
+  neglected_leads_count: number;
+  leads_by_stage: LeadsByStage[];
+};
+
+export type PerformanceData = {
+  user_id: number;
+  user_name: string;
+  monthly_target_count: number;
+  active_leads_count: number;
+  won_leads_count: number;
+  achievement_rate: number;
+};
+
+export type NeglectedLead = {
+  lead_id: number;
+  title: string;
+  owner_name: string;
+  stage_name: string;
+  days_since_last_activity: number | null;
+  threshold_days: number;
+};
+
+// ---- ダッシュボード API ----
+export const dashboardApi = {
+  stats: (token: string) =>
+    request<DashboardStats>('/dashboard', { token }),
+  performance: (token: string) =>
+    request<PerformanceData[]>('/dashboard/performance', { token }),
+  neglectedLeads: (token: string) =>
+    request<NeglectedLead[]>('/dashboard/neglected-leads', { token }),
+};

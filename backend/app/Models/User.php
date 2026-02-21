@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -52,5 +53,10 @@ class User extends Authenticatable
     public function isAdminOrManager(): bool
     {
         return in_array($this->role, ['Admin', 'Manager']);
+    }
+
+    public function leads(): HasMany
+    {
+        return $this->hasMany(Lead::class, 'owner_id');
     }
 }
