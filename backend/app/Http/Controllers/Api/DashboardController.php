@@ -12,92 +12,159 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    /**
+     * GET /api/dashboard
+     * 全体KPI統計
+     */
+    public function index(): JsonResponse
     {
-        $totalLeads  = Lead::count();
-        $wonStage    = LeadStage::where('name', 'like', '%成約%')->first();
-        $wonLeads    = $wonStage ? Lead::where('current_stage_id', $wonStage->id)->count() : 0;
+        $totalLeads = Lead::count();
 
-        // アクティブ（成約・失注以外）
-        $closedStageIds = LeadStage::where('name', 'like', '%クローズ%')->pluck('id');
-        $activeLeads    = Lead::whereNotIn('current_stage_id', $closedStageIds)->count();
+        // クローズ（成約・失注）ステージのIDを除いたものをアクティブと定義
+        $closedStageNames = ['クローズ（成約）', 'クローズ（失注）'];
+        $closedStageIds = LeadStage::whereIn('name', $closedStageNames)->pluck('id');
+        $wonStageIds    = LeadStage::where('name', 'クローズ（成約）')->pluck('id');
 
-        $conversionRate = $totalLeads > 0 ? round($wonLeads / $totalLeads * 100, 1) : 0;
-
-        // ステージ別リード数
-        $leadsByStage = LeadStage::withCount('leads')
-            ->orderBy('display_order')
-            ->get()
-            ->map(fn ($s) => [
-                'stage_id'   => $s->id,
-                'stage_name' => $s->name,
-                'count'      => $s->leads_count,
-            ]);
-
-        // 放置リード数
-        $neglectedCount = Lead::join('lead_stages', 'leads.current_stage_id', '=', 'lead_stages.id')
-            ->whereNotNull('lead_stages.reassignment_threshold_days')
-            ->whereRaw('leads.last_activity_at < NOW() - (lead_stages.reassignment_threshold_days || \' days\')::interval')
+        $activeLeads = Lead::whereNotIn('current_stage_id', $closedStageIds)
+            ->whereNotNull('current_stage_id')
             ->count();
 
+        $wonLeads = Lead::whereIn('current_stage_id', $wonStageIds)->count();
+        $conversionRate = $totalLeads > 0
+            ? round($wonLeads / $totalLeads * 100, 1)
+            : 0.0;
+
+        // ステージ別リード数
+        $leadsByStage = LeadStage::where('is_active', true)
+            ->orderBy('display_order')
+            ->get()
+            ->map(fn($stage) => [
+                'stage_id'   => $stage->id,
+                'stage_name' => $stage->name,
+                'count'      => Lead::where('current_stage_id', $stage->id)->count(),
+            ]);
+
+        // 放置リード数（last_activity_at が threshold を超えたもの）
+        $neglectedCount = $this->countNeglectedLeads();
+
         return response()->json([
-            'total_leads'           => $totalLeads,
-            'active_leads'          => $activeLeads,
-            'won_leads'             => $wonLeads,
-            'conversion_rate'       => $conversionRate,
-            'leads_by_stage'        => $leadsByStage,
+            'total_leads'          => $totalLeads,
+            'active_leads'         => $activeLeads,
+            'won_leads'            => $wonLeads,
+            'conversion_rate'      => $conversionRate,
             'neglected_leads_count' => $neglectedCount,
+            'leads_by_stage'       => $leadsByStage,
         ]);
     }
 
+    /**
+     * GET /api/dashboard/performance
+     * IS別パフォーマンス（Admin/Manager のみ全体表示、IS は自分のみ）
+     */
     public function performance(Request $request): JsonResponse
     {
-        $closedStageIds = LeadStage::where('name', 'like', '%クローズ%')->pluck('id');
-        $wonStage       = LeadStage::where('name', 'like', '%成約%')->first();
+        $me = $request->user();
 
-        $users = User::where('status', 'active')
-            ->withCount([
-                'leads as active_leads_count' => fn ($q) => $q->whereNotIn('current_stage_id', $closedStageIds),
-                'leads as won_leads_count'    => fn ($q) => $wonStage ? $q->where('current_stage_id', $wonStage->id) : $q->whereRaw('1=0'),
+        $query = User::where('status', 'active')
+            ->where('role', 'IS')
+            ->withCount(['leads as active_leads_count' => fn($q) =>
+                $q->whereNotIn('current_stage_id',
+                    LeadStage::whereIn('name', ['クローズ（成約）', 'クローズ（失注）'])->pluck('id')
+                )->whereNotNull('current_stage_id')
             ])
-            ->get()
-            ->map(function ($user) {
-                $target          = $user->monthly_target_count ?? 0;
-                $achievementRate = $target > 0
-                    ? round($user->won_leads_count / $target * 100, 1)
-                    : null;
+            ->withCount(['leads as won_leads_count' => fn($q) =>
+                $q->whereIn('current_stage_id',
+                    LeadStage::where('name', 'クローズ（成約）')->pluck('id')
+                )
+            ]);
 
-                return [
-                    'user_id'              => $user->id,
-                    'user_name'            => $user->name,
-                    'role'                 => $user->role,
-                    'monthly_target_count' => $target,
-                    'active_leads_count'   => $user->active_leads_count,
-                    'won_leads_count'      => $user->won_leads_count,
-                    'achievement_rate'     => $achievementRate,
-                ];
-            });
+        if (!$me->isAdminOrManager()) {
+            $query->where('id', $me->id);
+        }
+
+        $users = $query->get()->map(fn($u) => [
+            'user_id'              => $u->id,
+            'user_name'            => $u->name,
+            'monthly_target_count' => $u->monthly_target_count,
+            'active_leads_count'   => $u->active_leads_count,
+            'won_leads_count'      => $u->won_leads_count,
+            'achievement_rate'     => $u->monthly_target_count > 0
+                ? round($u->won_leads_count / $u->monthly_target_count * 100, 1)
+                : 0.0,
+        ]);
 
         return response()->json($users);
     }
 
+    /**
+     * GET /api/dashboard/neglected-leads
+     * 放置リードアラート
+     */
     public function neglectedLeads(Request $request): JsonResponse
     {
-        $leads = Lead::join('lead_stages', 'leads.current_stage_id', '=', 'lead_stages.id')
-            ->join('users as owners', 'leads.owner_id', '=', 'owners.id')
-            ->whereNotNull('lead_stages.reassignment_threshold_days')
-            ->whereRaw('leads.last_activity_at < NOW() - (lead_stages.reassignment_threshold_days || \' days\')::interval')
-            ->select(
-                'leads.id as lead_id',
-                'leads.title',
-                'owners.name as owner_name',
-                'lead_stages.name as stage_name',
-                'lead_stages.reassignment_threshold_days as threshold_days',
-                DB::raw("EXTRACT(DAY FROM NOW() - leads.last_activity_at)::int AS days_since_last_activity")
-            )
-            ->orderByDesc('days_since_last_activity')
+        $me = $request->user();
+
+        $stages = LeadStage::whereNotNull('reassignment_threshold_days')
+            ->where('is_active', true)
             ->get();
 
-        return response()->json($leads);
+        $neglected = [];
+
+        foreach ($stages as $stage) {
+            $threshold = $stage->reassignment_threshold_days;
+
+            $query = Lead::where('current_stage_id', $stage->id)
+                ->where(function ($q) use ($threshold) {
+                    $q->whereNull('last_activity_at')
+                      ->orWhere('last_activity_at', '<', now()->subDays($threshold));
+                })
+                ->with(['owner']);
+
+            if (!$me->isAdminOrManager()) {
+                $query->where('owner_id', $me->id);
+            }
+
+            foreach ($query->get() as $lead) {
+                $daysSince = $lead->last_activity_at
+                    ? (int) $lead->last_activity_at->diffInDays(now())
+                    : null;
+
+                $neglected[] = [
+                    'lead_id'                  => $lead->id,
+                    'title'                    => $lead->title,
+                    'owner_name'               => $lead->owner?->name ?? '未割り当て',
+                    'stage_name'               => $stage->name,
+                    'days_since_last_activity' => $daysSince,
+                    'threshold_days'           => $threshold,
+                ];
+            }
+        }
+
+        // 超過日数（days_since - threshold）の大きい順にソート
+        usort($neglected, fn($a, $b) =>
+            (($b['days_since_last_activity'] ?? 0) - $b['threshold_days'])
+            <=> (($a['days_since_last_activity'] ?? 0) - $a['threshold_days'])
+        );
+
+        return response()->json($neglected);
+    }
+
+    private function countNeglectedLeads(): int
+    {
+        $stages = LeadStage::whereNotNull('reassignment_threshold_days')
+            ->where('is_active', true)
+            ->get();
+
+        $count = 0;
+        foreach ($stages as $stage) {
+            $count += Lead::where('current_stage_id', $stage->id)
+                ->where(function ($q) use ($stage) {
+                    $q->whereNull('last_activity_at')
+                      ->orWhere('last_activity_at', '<', now()->subDays($stage->reassignment_threshold_days));
+                })
+                ->count();
+        }
+
+        return $count;
     }
 }
