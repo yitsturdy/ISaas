@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\LeadStageController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,4 +23,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // 顧客管理
     Route::apiResource('customers', CustomerController::class);
+
+    // リード管理
+    Route::apiResource('leads', LeadController::class);
+    Route::post('leads/{lead}/transition', [LeadController::class, 'transition']);
+    Route::patch('leads/{lead}/assign',    [LeadController::class, 'assign']);
+
+    // リードステージ管理
+    Route::apiResource('lead-stages', LeadStageController::class);
 });

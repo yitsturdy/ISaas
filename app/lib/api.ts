@@ -132,6 +132,59 @@ export const usersApi = {
     request<{ message: string }>(`/users/${id}`, { method: 'DELETE', token }),
 };
 
+// ---- リード管理 型定義 ----
+export type LeadStage = {
+  id: number;
+  name: string;
+  display_order: number;
+  is_active: boolean;
+  reassignment_threshold_days: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LeadStageHistory = {
+  id: number;
+  lead_id: number;
+  from_stage_id: number | null;
+  to_stage_id: number;
+  changed_by: number | null;
+  reason_code: string | null;
+  stay_days: number | null;
+  created_at: string;
+  from_stage: LeadStage | null;
+  to_stage: LeadStage;
+  changed_by_user: User | null;
+};
+
+export type Lead = {
+  id: number;
+  customer_id: number;
+  owner_id: number | null;
+  current_stage_id: number | null;
+  title: string;
+  note: string | null;
+  last_activity_at: string | null;
+  stage_updated_at: string | null;
+  total_touch_count: number;
+  created_at: string;
+  customer: Customer;
+  owner: User | null;
+  current_stage: LeadStage | null;
+  stage_histories?: LeadStageHistory[];
+};
+
+export type LeadParams = {
+  search?: string;
+  stage_id?: number;
+  owner_id?: number;
+  customer_id?: number;
+  sort_by?: string;
+  sort_dir?: 'asc' | 'desc';
+  per_page?: number;
+  page?: number;
+};
+
 // ---- 顧客管理 API ----
 export const customersApi = {
   list: (token: string, params: CustomerParams = {}) => {
@@ -150,4 +203,42 @@ export const customersApi = {
     request<Customer>(`/customers/${id}`, { method: 'PUT', body: data, token }),
   delete: (token: string, id: number) =>
     request<{ message: string }>(`/customers/${id}`, { method: 'DELETE', token }),
+};
+
+// ---- リードステージ API ----
+export const leadStagesApi = {
+  list: (token: string) =>
+    request<LeadStage[]>('/lead-stages', { token }),
+  get: (token: string, id: number) =>
+    request<LeadStage>(`/lead-stages/${id}`, { token }),
+  create: (token: string, data: Omit<LeadStage, 'id' | 'created_at' | 'updated_at'>) =>
+    request<LeadStage>('/lead-stages', { method: 'POST', body: data, token }),
+  update: (token: string, id: number, data: Partial<Omit<LeadStage, 'id' | 'created_at' | 'updated_at'>>) =>
+    request<LeadStage>(`/lead-stages/${id}`, { method: 'PUT', body: data, token }),
+  delete: (token: string, id: number) =>
+    request<{ message: string }>(`/lead-stages/${id}`, { method: 'DELETE', token }),
+};
+
+// ---- リード管理 API ----
+export const leadsApi = {
+  list: (token: string, params: LeadParams = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+    return request<PaginatedResponse<Lead>>(`/leads${qs ? '?' + qs : ''}`, { token });
+  },
+  get: (token: string, id: number) =>
+    request<Lead>(`/leads/${id}`, { token }),
+  create: (token: string, data: { customer_id: number; title: string; owner_id?: number | null; current_stage_id?: number | null; note?: string | null }) =>
+    request<Lead>('/leads', { method: 'POST', body: data, token }),
+  update: (token: string, id: number, data: Partial<{ customer_id: number; title: string; owner_id: number | null; current_stage_id: number | null; note: string | null }>) =>
+    request<Lead>(`/leads/${id}`, { method: 'PUT', body: data, token }),
+  delete: (token: string, id: number) =>
+    request<{ message: string }>(`/leads/${id}`, { method: 'DELETE', token }),
+  transition: (token: string, id: number, data: { to_stage_id: number; reason_code?: string }) =>
+    request<Lead>(`/leads/${id}/transition`, { method: 'POST', body: data, token }),
+  assign: (token: string, id: number, owner_id: number | null) =>
+    request<Lead>(`/leads/${id}/assign`, { method: 'PATCH', body: { owner_id }, token }),
 };
