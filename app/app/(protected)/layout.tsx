@@ -5,11 +5,15 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
 const NAV_ITEMS = [
-  { href: '/dashboard',  label: 'ダッシュボード', roles: null },
-  { href: '/leads',      label: 'リード管理',     roles: null },
-  { href: '/customers',  label: '顧客管理',       roles: null },
-  { href: '/users',      label: 'ユーザー管理',   roles: ['Admin', 'Manager'] as string[] },
+  { href: '/dashboard',              label: 'ダッシュボード',       roles: null },
+  { href: '/leads',                  label: 'リード管理',           roles: null },
+  { href: '/customers',              label: '顧客管理',             roles: null },
+  { href: '/users',                  label: 'ユーザー管理',         roles: ['Admin', 'Manager'] as string[] },
+  { href: '/settings/lead-stages',   label: '└ ステージ設定',       roles: ['Admin', 'Manager'] as string[], section: '設定' },
+  { href: '/settings/targets',       label: '└ 月次目標設定',       roles: ['Admin', 'Manager'] as string[], section: '設定' },
 ];
+
+type NavItem = typeof NAV_ITEMS[number] & { section?: string };
 
 const ROLE_LABEL: Record<string, string> = {
   Admin:   '管理者',
@@ -32,22 +36,37 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* ナビゲーション */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.filter(item =>
-            item.roles === null || (user?.role && item.roles.includes(user.role))
-          ).map(({ href, label }) => {
-            const isActive = pathname === href || pathname.startsWith(href + '/');
-            return (
-              <Link key={href} href={href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
-                  ${isActive
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                  }`}>
-                {label}
-              </Link>
+        <nav className="flex-1 px-3 py-4 overflow-y-auto">
+          {(() => {
+            const visible = (NAV_ITEMS as NavItem[]).filter(
+              item => item.roles === null || (user?.role && item.roles.includes(user.role))
             );
-          })}
+            const items: React.ReactNode[] = [];
+            let sectionShown = false;
+
+            visible.forEach(({ href, label, section }) => {
+              if (section && !sectionShown) {
+                sectionShown = true;
+                items.push(
+                  <p key="__settings-header" className="px-3 pt-4 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    設定
+                  </p>
+                );
+              }
+              const isActive = pathname === href || pathname.startsWith(href + '/');
+              items.push(
+                <Link key={href} href={href}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5
+                    ${isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                    }`}>
+                  {label}
+                </Link>
+              );
+            });
+            return items;
+          })()}
         </nav>
 
         {/* ユーザー情報 + ログアウト */}

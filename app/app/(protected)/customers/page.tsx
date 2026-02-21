@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { customersApi, Customer, ServiceTier, IndustryCategory, CustomerParams } from '@/lib/api';
+import { customersApi, Customer, ServiceTier, IndustryCategory, CustomerParams, ImportResult } from '@/lib/api';
 
 const TIER_COLOR: Record<ServiceTier, string> = {
   A: 'bg-red-100 text-red-700',
@@ -33,6 +33,11 @@ export default function CustomersPage() {
   const [existing, setExisting] = useState<'' | 'true' | 'false'>('');
   const [sortBy,   setSortBy]   = useState('created_at');
   const [sortDir,  setSortDir]  = useState<'asc' | 'desc'>('desc');
+
+  const [importOpen,   setImportOpen]   = useState(false);
+  const [importFile,   setImportFile]   = useState<File | null>(null);
+  const [importing,    setImporting]    = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   const fetchCustomers = useCallback(async () => {
     if (!token) return;
@@ -71,6 +76,32 @@ export default function CustomersPage() {
 
   const canWrite = me?.role === 'Admin' || me?.role === 'Manager';
 
+  async function handleExport() {
+    if (!token) return;
+    const params: CustomerParams = {};
+    if (search)   params.search             = search;
+    if (industry) params.industry_category  = industry;
+    if (tier)     params.service_tier       = tier;
+    if (existing !== '') params.is_existing_customer = existing === 'true';
+    await customersApi.export(token, params);
+  }
+
+  async function handleImport() {
+    if (!token || !importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await customersApi.import(token, importFile);
+      setImportResult(result);
+      if (result.success_count > 0) fetchCustomers();
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      alert(e.message ?? 'インポートに失敗しました。');
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
@@ -79,12 +110,22 @@ export default function CustomersPage() {
             <h1 className="text-2xl font-bold text-gray-800">顧客管理</h1>
             <p className="text-sm text-gray-500 mt-1">全 {total} 件</p>
           </div>
-          {canWrite && (
-            <Link href="/customers/new"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
-              + 顧客追加
-            </Link>
-          )}
+          <div className="flex items-center gap-3">
+            <button onClick={handleExport}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 transition">
+              CSV出力
+            </button>
+            <button onClick={() => { setImportResult(null); setImportFile(null); setImportOpen(true); }}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 transition">
+              CSVインポート
+            </button>
+            {canWrite && (
+              <Link href="/customers/new"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+                + 顧客追加
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* 検索・フィルター */}
@@ -180,6 +221,46 @@ export default function CustomersPage() {
           </div>
         )}
       </div>
+
+      {/* CSVインポートモーダル */}
+      {importOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-gray-800 mb-1">CSVインポート（顧客）</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              ヘッダー行: 会社名, ドメイン, 業種, 従業員数, サービスティア, ウェブサイト, 既存顧客(既存/新規)
+            </p>
+
+            <input type="file" accept=".csv,.txt"
+              onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-gray-600 border border-gray-300 rounded-lg px-3 py-2 mb-4" />
+
+            {importResult && (
+              <div className="mb-4 p-3 rounded-lg bg-gray-50 border text-sm">
+                <p className="font-medium text-green-700 mb-1">✓ {importResult.success_count} 件インポート完了</p>
+                {importResult.errors.length > 0 && (
+                  <ul className="text-red-600 text-xs space-y-0.5 max-h-32 overflow-y-auto">
+                    {importResult.errors.map((e, i) => (
+                      <li key={i}>{e.row}行目: {e.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setImportOpen(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                閉じる
+              </button>
+              <button onClick={handleImport} disabled={!importFile || importing}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50">
+                {importing ? 'インポート中...' : 'インポート'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
