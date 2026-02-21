@@ -80,6 +80,38 @@ export const authApi = {
   me: (token: string) => request<User>('/user', { token }),
 };
 
+// ---- 顧客管理 型定義 ----
+export type ServiceTier      = 'A' | 'B' | 'C';
+export type IndustryCategory =
+  | 'IT・テクノロジー' | '製造業' | '金融・保険' | '小売・EC'
+  | '医療・ヘルスケア' | '教育' | '不動産' | 'サービス業' | '物流・運輸' | 'その他';
+export type EmployeeSize =
+  | '1〜10人' | '11〜50人' | '51〜100人' | '101〜300人' | '301〜1000人' | '1001人以上';
+
+export type Customer = {
+  id: number;
+  company_id: string | null;
+  name: string;
+  domain: string | null;
+  industry_category: IndustryCategory | null;
+  employee_size: EmployeeSize | null;
+  service_tier: ServiceTier;
+  website_url: string | null;
+  is_existing_customer: boolean;
+  created_at: string;
+};
+
+export type CustomerParams = {
+  search?: string;
+  industry_category?: IndustryCategory;
+  service_tier?: ServiceTier;
+  is_existing_customer?: boolean;
+  sort_by?: string;
+  sort_dir?: 'asc' | 'desc';
+  per_page?: number;
+  page?: number;
+};
+
 // ---- ユーザー管理 API ----
 export const usersApi = {
   list: (token: string, params: UserParams = {}) => {
@@ -98,4 +130,24 @@ export const usersApi = {
     request<User>(`/users/${id}`, { method: 'PUT', body: data, token }),
   delete: (token: string, id: number) =>
     request<{ message: string }>(`/users/${id}`, { method: 'DELETE', token }),
+};
+
+// ---- 顧客管理 API ----
+export const customersApi = {
+  list: (token: string, params: CustomerParams = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+    return request<PaginatedResponse<Customer>>(`/customers${qs ? '?' + qs : ''}`, { token });
+  },
+  get: (token: string, id: number) =>
+    request<Customer>(`/customers/${id}`, { token }),
+  create: (token: string, data: Omit<Customer, 'id' | 'created_at'>) =>
+    request<Customer>('/customers', { method: 'POST', body: data, token }),
+  update: (token: string, id: number, data: Partial<Omit<Customer, 'id' | 'created_at'>>) =>
+    request<Customer>(`/customers/${id}`, { method: 'PUT', body: data, token }),
+  delete: (token: string, id: number) =>
+    request<{ message: string }>(`/customers/${id}`, { method: 'DELETE', token }),
 };
