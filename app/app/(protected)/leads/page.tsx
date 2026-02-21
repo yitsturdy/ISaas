@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { leadsApi, leadStagesApi, Lead, LeadStage, LeadParams } from '@/lib/api';
+import { leadsApi, leadStagesApi, Lead, LeadStage, LeadParams, ImportResult } from '@/lib/api';
 
 const STAGE_COLORS = [
   'border-gray-300 bg-gray-50',
@@ -29,7 +29,36 @@ export default function LeadsPage() {
   const [ownerId, setOwnerId] = useState('');
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
 
+  const [importOpen,   setImportOpen]   = useState(false);
+  const [importFile,   setImportFile]   = useState<File | null>(null);
+  const [importing,    setImporting]    = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+
   const canWrite = me?.role === 'Admin' || me?.role === 'Manager';
+
+  async function handleExport() {
+    if (!token) return;
+    await leadsApi.export(token, {
+      search: search || undefined,
+      owner_id: ownerId ? Number(ownerId) : undefined,
+    });
+  }
+
+  async function handleImport() {
+    if (!token || !importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await leadsApi.import(token, importFile);
+      setImportResult(result);
+      if (result.success_count > 0) fetchAll();
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      alert(e.message ?? 'インポートに失敗しました。');
+    } finally {
+      setImporting(false);
+    }
+  }
 
   const fetchAll = useCallback(async () => {
     if (!token) return;
@@ -84,6 +113,14 @@ export default function LeadsPage() {
                 リスト
               </button>
             </div>
+            <button onClick={handleExport}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 transition">
+              CSV出力
+            </button>
+            <button onClick={() => { setImportResult(null); setImportFile(null); setImportOpen(true); }}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 transition">
+              CSVインポート
+            </button>
             {canWrite && (
               <Link href="/leads/new"
                 className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
@@ -207,6 +244,46 @@ export default function LeadsPage() {
           </div>
         )}
       </div>
+
+      {/* CSVインポートモーダル */}
+      {importOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold text-gray-800 mb-1">CSVインポート（リード）</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              ヘッダー行: タイトル, 顧客名, 担当者名, ステージ名, メモ
+            </p>
+
+            <input type="file" accept=".csv,.txt"
+              onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-gray-600 border border-gray-300 rounded-lg px-3 py-2 mb-4" />
+
+            {importResult && (
+              <div className="mb-4 p-3 rounded-lg bg-gray-50 border text-sm">
+                <p className="font-medium text-green-700 mb-1">✓ {importResult.success_count} 件インポート完了</p>
+                {importResult.errors.length > 0 && (
+                  <ul className="text-red-600 text-xs space-y-0.5 max-h-32 overflow-y-auto">
+                    {importResult.errors.map((e, i) => (
+                      <li key={i}>{e.row}行目: {e.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setImportOpen(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                閉じる
+              </button>
+              <button onClick={handleImport} disabled={!importFile || importing}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50">
+                {importing ? 'インポート中...' : 'インポート'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

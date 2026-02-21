@@ -203,6 +203,16 @@ export const customersApi = {
     request<Customer>(`/customers/${id}`, { method: 'PUT', body: data, token }),
   delete: (token: string, id: number) =>
     request<{ message: string }>(`/customers/${id}`, { method: 'DELETE', token }),
+  export: (token: string, params: CustomerParams = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+    const filename = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
+    return downloadCsv(`/customers/export${qs ? '?' + qs : ''}`, token, filename);
+  },
+  import: (token: string, file: File) => uploadCsv('/customers/import', token, file),
 };
 
 // ---- リードステージ API ----
@@ -218,6 +228,37 @@ export const leadStagesApi = {
   delete: (token: string, id: number) =>
     request<{ message: string }>(`/lead-stages/${id}`, { method: 'DELETE', token }),
 };
+
+// ---- CSV ダウンロードヘルパー ----
+async function downloadCsv(endpoint: string, token: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'text/csv' },
+  });
+  if (!res.ok) throw { status: res.status, message: 'ダウンロードに失敗しました。' };
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---- CSV インポートヘルパー ----
+export type ImportResult = { success_count: number; errors: { row: number; message: string }[] };
+
+async function uploadCsv(endpoint: string, token: string, file: File): Promise<ImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) throw { status: res.status, errors: data.errors ?? null, message: data.message ?? 'インポートに失敗しました。' };
+  return data as ImportResult;
+}
 
 // ---- リード管理 API ----
 export const leadsApi = {
@@ -241,6 +282,57 @@ export const leadsApi = {
     request<Lead>(`/leads/${id}/transition`, { method: 'POST', body: data, token }),
   assign: (token: string, id: number, owner_id: number | null) =>
     request<Lead>(`/leads/${id}/assign`, { method: 'PATCH', body: { owner_id }, token }),
+  export: (token: string, params: LeadParams = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+    const filename = `leads_${new Date().toISOString().slice(0, 10)}.csv`;
+    return downloadCsv(`/leads/export${qs ? '?' + qs : ''}`, token, filename);
+  },
+  import: (token: string, file: File) => uploadCsv('/leads/import', token, file),
+};
+
+// ---- ダッシュボード 型定義 ----
+export type LeadsByStage = { stage_id: number; stage_name: string; count: number };
+
+export type DashboardStats = {
+  total_leads: number;
+  active_leads: number;
+  won_leads: number;
+  conversion_rate: number;
+  leads_by_stage: LeadsByStage[];
+  neglected_leads_count: number;
+};
+
+export type PerformanceData = {
+  user_id: number;
+  user_name: string;
+  role: Role;
+  monthly_target_count: number;
+  active_leads_count: number;
+  won_leads_count: number;
+  achievement_rate: number | null;
+};
+
+export type NeglectedLead = {
+  lead_id: number;
+  title: string;
+  owner_name: string;
+  stage_name: string;
+  days_since_last_activity: number;
+  threshold_days: number;
+};
+
+// ---- ダッシュボード API ----
+export const dashboardApi = {
+  stats: (token: string) =>
+    request<DashboardStats>('/dashboard', { token }),
+  performance: (token: string) =>
+    request<PerformanceData[]>('/dashboard/performance', { token }),
+  neglectedLeads: (token: string) =>
+    request<NeglectedLead[]>('/dashboard/neglected-leads', { token }),
 };
 
 // ---- ダッシュボード 型定義 ----
